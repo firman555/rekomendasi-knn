@@ -3,30 +3,39 @@ import pandas as pd
 from sklearn.neighbors import NearestNeighbors
 from scipy.sparse import csr_matrix
 import requests
+import gdown
+import os
 from deep_translator import GoogleTranslator
 
 # ================================
-# CONFIGURASI HALAMAN
+# KONFIGURASI STREAMLIT
 # ================================
-st.set_page_config(page_title="🎌 Rekomendasi Anime", layout="wide")
-st.title("🎌 Sistem Rekomendasi Anime")
+st.set_page_config(page_title="🎌 Sistem Rekomendasi Anime", layout="wide")
+st.markdown("<h1 style='text-align: center;'>🎌 Sistem Rekomendasi Anime</h1>", unsafe_allow_html=True)
+st.caption("Powered by K-Nearest Neighbors & Jikan API + Google Drive")
 
 # ================================
-# BACA DATA DARI GOOGLE DRIVE
+# FUNGSI AMBIL DATA DARI GDRIVE
 # ================================
 @st.cache_data
-def load_from_gdrive(file_id):
-    url = f"https://drive.google.com/uc?id={file_id}"
-    return pd.read_csv(url)
+def download_and_load_csv(file_id, filename):
+    output = f"/tmp/{filename}"
+    if not os.path.exists(output):
+        gdown.download(f"https://drive.google.com/uc?id={file_id}", output, quiet=False)
+    return pd.read_csv(output)
 
+# ================================
+# AMBIL DAN PROSES DATA
+# ================================
 @st.cache_data
 def load_data():
-    anime_file_id = "1QeLqFognHnifo9EDQz_19NFNiwbPIV3x"
-    rating_file_id = "1rLbB5n1LBTUPAsU9g-SSX1ru1IeOy3Ab"
+    anime_file_id = "1QelqFognHnifo9EDQz_19NfNiwbPIV3x"  # Ganti dengan file ID Google Drive anime.csv
+    rating_file_id = "1rlBb5n1LBTUPAsU9g-S5X1ru1IeOy3Ab"  # Ganti dengan file ID Google Drive rating.csv
 
-    anime = load_from_gdrive(anime_file_id)[["anime_id", "name"]].dropna().drop_duplicates("anime_id")
-    ratings = load_from_gdrive(rating_file_id)
+    anime = download_and_load_csv(anime_file_id, "anime.csv")[["anime_id", "name"]].dropna().drop_duplicates("anime_id")
+    ratings = download_and_load_csv(rating_file_id, "rating.csv")
     ratings = ratings[ratings["rating"] > 0]
+
     data = ratings.merge(anime, on="anime_id")
     return anime, data
 
@@ -45,81 +54,67 @@ def train_model(matrix):
     return model
 
 # ================================
-# GET INFO DARI JIKAN API
-# ================================
-def get_anime_details(anime_title):
-    try:
-        response = requests.get("https://api.jikan.moe/v4/anime", params={"q": anime_title, "limit": 1})
-        if response.status_code == 200 and response.json()["data"]:
-            data = response.json()["data"][0]
-            image = data["images"]["jpg"].get("image_url", "assets/placeholder.jpg")
-            synopsis_en = data.get("synopsis", "Sinopsis tidak tersedia.")
-            genres = ", ".join([g["name"] for g in data.get("genres", [])])
-            synopsis_id = GoogleTranslator(source='auto', target='id').translate(synopsis_en)
-            return image, synopsis_id, genres
-    except:
-        pass
-    return "assets/placeholder.jpg", "Sinopsis tidak tersedia.", "-"
-
-# ================================
 # FUNGSI REKOMENDASI
 # ================================
 def get_recommendations(title, matrix, model, n=5):
     if title not in matrix.index:
         return []
     idx = matrix.index.get_loc(title)
-    dists, idxs = model.kneighbors(matrix.iloc[idx].values.reshape(1, -1), n_neighbors=n+1)
-    return [(matrix.index[i], 1 - dists.flatten()[j]) for j, i in enumerate(idxs.flatten()[1:])]
+    dists, idxs = model.kneighbors(matrix.iloc[idx, :].values.reshape(1, -1), n_neighbors=n+1)
+    return [
+        (matrix.index[i], 1 - dists.flatten()[j])
+        for j, i in enumerate(idxs.flatten()[1:])
+        if matrix.index[i] != title
+    ]
 
 # ================================
-# LOAD & TRAIN
+# JIKAN API AMBIL GAMBAR & GENRE
 # ================================
-st.sidebar.header("⚙️ Pengaturan Dataset")
-num_users = st.sidebar.slider("Jumlah User Teratas", 100, 2000, 800, 100)
-num_anime = st.sidebar.slider("Jumlah Anime Teratas", 100, 1000, 400, 50)
+def get_anime_details(anime_title):
+    try:
+        response = requests.get("https://api.jikan.moe/v4/anime", params={"q": anime_title, "limit": 1})
+        if response.status_code == 200 and response.json()["data"]:
+            data = response.json()["data"][0]
+            image = data["images"]["jpg"].get("image_url", "")
+            synopsis_en = data.get("synopsis", "")
+            genres = ", ".join([g["name"] for g in data.get("genres", [])])
+            synopsis_id = GoogleTranslator(source='auto', target='id').translate(synopsis_en)
+            return image, synopsis_id, genres
+    except Exception as e:
+        print(f"Error for {anime_title}: {e}")
+    return "", "Sinopsis tidak tersedia.", "-"
 
-with st.spinner("Memuat data..."):
+# ================================
+# LOAD DATASET & MODEL
+# ================================
+with st.spinner("📦 Memuat data dan model..."):
     anime, data = load_data()
-    matrix = prepare_matrix(data, num_users, num_anime)
+    matrix = prepare_matrix(data)
     model = train_model(matrix)
 
 # ================================
-# SELECT DAN TAMPILKAN REKOMENDASI
+# UI: PILIH FAVORIT
 # ================================
-st.markdown("## 🎮 Pilih anime favorit kamu:")
+st.markdown("## 🎮 Pilih Anime Favorit Kamu")
 anime_titles = list(matrix.index)
-selected_anime = st.selectbox("Pilih anime:", anime_titles)
+selected_anime = st.selectbox("Pilih anime yang kamu suka:", anime_titles)
 
+# ================================
+# TAMPILKAN REKOMENDASI
+# ================================
 if st.button("🔍 Tampilkan Rekomendasi"):
-    st.markdown(f"### ✨ Rekomendasi berdasarkan: **{selected_anime}**")
     recommendations = get_recommendations(selected_anime, matrix, model)
 
     if recommendations:
+        st.subheader(f"✨ Rekomendasi berdasarkan: {selected_anime}")
         cols = st.columns(5)
         for i, (rec_title, similarity) in enumerate(recommendations):
             with cols[i % 5]:
                 image_url, synopsis, genres = get_anime_details(rec_title)
                 st.image(image_url, caption=rec_title, use_container_width=True)
-                st.markdown(f"🎭 *Genre:* {genres}")
+                st.markdown(f"**Genre:** {genres}")
                 st.markdown(f"🔗 *Kemiripan:* `{similarity:.2f}`")
                 with st.expander("📖 Sinopsis"):
                     st.write(synopsis)
     else:
-        st.warning("❗ Anime tidak ditemukan atau tidak memiliki cukup data.")
-
-# ================================
-# TAMPILKAN RIWAYAT PILIHAN
-# ================================
-if "history" not in st.session_state:
-    st.session_state.history = []
-
-if selected_anime not in st.session_state.history:
-    st.session_state.history.append(selected_anime)
-
-if st.session_state.history:
-    st.markdown("## 🕓 Riwayat Anime yang Kamu Pilih:")
-    cols = st.columns(min(5, len(st.session_state.history)))
-    for i, title in enumerate(reversed(st.session_state.history[-5:])):
-        with cols[i % 5]:
-            image_url, _, _ = get_anime_details(title)
-            st.image(image_url, caption=title, width=150)
+        st.warning("❗ Anime tidak ditemukan dalam dataset.")
