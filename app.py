@@ -29,8 +29,8 @@ def download_and_load_csv(file_id, filename):
 # ================================
 @st.cache_data
 def load_data():
-    anime_file_id = "1QelqFognHnifo9EDQz_19NfNiwbPIV3x"   # ganti dengan file ID anime.csv
-    rating_file_id = "1rLbB5n1LBTUPAsU9g-5SX1ru1IeOy3Ab"  # ganti dengan file ID rating.csv
+    anime_file_id = "1QelqFognHnifo9EDQz_19NfNiwbPIV3x"   # ganti ID dengan milikmu
+    rating_file_id = "1rLbB5n1LBTUPAsU9g-5SX1ru1IeOy3Ab"
 
     anime = download_and_load_csv(anime_file_id, "anime.csv")[["anime_id", "name"]].dropna().drop_duplicates("anime_id")
     ratings = download_and_load_csv(rating_file_id, "rating.csv")
@@ -39,7 +39,7 @@ def load_data():
     return anime, data
 
 # ================================
-# SIAPKAN MATRIX
+# PERSIAPAN MATRIX
 # ================================
 @st.cache_data
 def prepare_matrix(data, num_users=800, num_anime=400):
@@ -56,7 +56,7 @@ def train_model(matrix):
     return model
 
 # ================================
-# GET REKOMENDASI
+# FUNGSI REKOMENDASI
 # ================================
 def get_recommendations(title, matrix, model, n=5):
     if title not in matrix.index:
@@ -66,7 +66,7 @@ def get_recommendations(title, matrix, model, n=5):
     return [(matrix.index[i], 1 - dists.flatten()[j]) for j, i in enumerate(idxs.flatten()[1:])]
 
 # ================================
-# API JIKAN: GAMBAR + SINOPSIS
+# AMBIL DETAIL DARI JIKAN API
 # ================================
 def get_anime_details(anime_title):
     try:
@@ -95,7 +95,7 @@ def get_top_5_anime(data):
     return top_anime
 
 # ================================
-# LOAD DATA
+# LOAD SEMUA
 # ================================
 with st.spinner("🔄 Memuat data..."):
     anime, data = load_data()
@@ -103,18 +103,18 @@ with st.spinner("🔄 Memuat data..."):
     model = train_model(matrix)
 
 # ================================
-# LEADERBOARD
+# TAMPILKAN LEADERBOARD
 # ================================
 st.subheader("🏆 Top 5 Anime Berdasarkan Rating")
 top5_df = get_top_5_anime(data)
-
-# Buat kolom sebanyak jumlah top 5
 cols = st.columns(5)
-
 for i, row in enumerate(top5_df.itertuples()):
     with cols[i]:
         image_url, _, _ = get_anime_details(row.name)
-        st.image(image_url, caption=row.name, use_container_width=True)
+        if image_url:
+            st.image(image_url, caption=row.name, use_container_width=True)
+        else:
+            st.write(row.name)
         st.markdown(f"⭐ **Rating:** `{row.avg_rating:.2f}`")
         st.markdown(f"👥 **Jumlah Rating:** `{row.num_ratings}`")
 
@@ -135,7 +135,7 @@ if st.button("🔍 Tampilkan Rekomendasi"):
     st.subheader(f"✨ Rekomendasi berdasarkan: {selected_anime}")
     cols = st.columns(5)
     for i, (rec_title, similarity) in enumerate(rekomendasi):
-        with cols[i % 5]:
+        with cols[i]:
             image_url, synopsis, genres = get_anime_details(rec_title)
             st.image(image_url, caption=rec_title, use_container_width=True)
             st.markdown(f"*Genre:* {genres}")
@@ -144,7 +144,7 @@ if st.button("🔍 Tampilkan Rekomendasi"):
                 st.markdown(synopsis)
 
 # ================================
-# RIWAYAT PILIHAN
+# RIWAYAT
 # ================================
 if st.session_state.history:
     st.markdown("### 🕓 Riwayat Anime yang Kamu Pilih:")
