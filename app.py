@@ -83,7 +83,19 @@ def get_anime_details(anime_title):
     except Exception as e:
         print(f"Error for {anime_title}: {e}")
     return "", "Sinopsis tidak tersedia.", "-"
-    
+
+# ================================
+# TOP 5 LEADERBOARD
+# ================================
+@st.cache_data
+def get_top_5_anime(data):
+    grouped = data.groupby("name").agg(
+        avg_rating=("rating", "mean"),
+        num_ratings=("rating", "count")
+    ).reset_index()
+    top_anime = grouped[grouped["num_ratings"] > 10].sort_values(by="avg_rating", ascending=False).head(5)
+    return top_anime
+
 # ================================
 # LOAD DATASET & MODEL
 # ================================
@@ -91,6 +103,22 @@ with st.spinner("📦 Memuat data dan model..."):
     anime, data = load_data()
     matrix = prepare_matrix(data)
     model = train_model(matrix)
+
+# ================================
+# LEADERBOARD
+# ================================
+st.subheader("🏆 Top 5 Anime Berdasarkan Rating")
+top5_df = get_top_5_anime(data)
+
+# Buat kolom sebanyak jumlah top 5
+cols = st.columns(5)
+
+for i, row in enumerate(top5_df.itertuples()):
+    with cols[i]:
+        image_url, _, _ = get_anime_details(row.name)
+        st.image(image_url, caption=row.name, use_container_width=True)
+        st.markdown(f"⭐ **Rating:** `{row.avg_rating:.2f}`")
+        st.markdown(f"👥 **Jumlah Rating:** `{row.num_ratings}`")
 
 # ================================
 # UI: PILIH FAVORIT
