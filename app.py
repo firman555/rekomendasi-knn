@@ -29,7 +29,7 @@ def download_and_load_csv(file_id, filename):
 # ================================
 @st.cache_data
 def load_data():
-    anime_file_id = "1QeLqFognHnifo9EDQz_19NfNiwbPIV3x"   # ganti dengan file ID anime.csv
+    anime_file_id = "1QelqFognHnifo9EDQz_19NfNiwbPIV3x"   # ganti dengan file ID anime.csv
     rating_file_id = "1rLbB5n1LBTUPAsU9g-5SX1ru1IeOy3Ab"  # ganti dengan file ID rating.csv
 
     anime = download_and_load_csv(anime_file_id, "anime.csv")[["anime_id", "name"]].dropna().drop_duplicates("anime_id")
